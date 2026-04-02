@@ -9,6 +9,35 @@ namespace boiler {
 
 IpcHandler::IpcHandler() { memset(&status_, 0, sizeof(status_)); }
 
+static void __not_in_flash_func(ipc_ram_pause_loop)() {
+  using namespace network_core::ipc;
+
+  // Direct HW Register pointers to bypass any compiler linking to XIP flash
+  volatile uint32_t *sio_fifo_st = (volatile uint32_t *)0xd0000050; // SIO_FIFO_ST
+  volatile uint32_t *sio_fifo_rd = (volatile uint32_t *)0xd0000058; // SIO_FIFO_RD
+  volatile uint32_t *sio_fifo_wr = (volatile uint32_t *)0xd0000054; // SIO_FIFO_WR
+
+  while (true) {
+    if ((*sio_fifo_st) & 0x01) { // SIO_FIFO_ST_VLD_BITS
+      uint32_t raw = *sio_fifo_rd;
+      
+      // Safely echo Pico SDK's native hardware lockout ping sequences blindly 
+      // back to Core 1 without exiting the RAM loop to satisfy flash_range_erase
+      if ((raw & 0xFFFFFF00) == 0x73a88300) {
+          while (!((*sio_fifo_st) & 0x02)); // WAIT FOR SIO_FIFO_ST_RDY_BITS
+          *sio_fifo_wr = raw;
+          continue;
+      }
+      
+      // Ensure we explicitly catch the End command, skipping anything else
+      Message *msg = reinterpret_cast<Message *>(raw);
+      if (msg && msg->type == MsgType::OtaFlashLockoutEnd) {
+        break; // Free to return to XIP Flash safely!
+      }
+    }
+  }
+}
+
 void IpcHandler::process_messages() {
   using namespace boiler_board;
   using namespace network_core::ipc;
@@ -62,6 +91,17 @@ void IpcHandler::process_messages() {
         mqtt_msg_cb_(msg->mqtt_msg.topic, msg->mqtt_msg.payload,
                      msg->mqtt_msg.payload_len);
       }
+      break;
+    case MsgType::OtaFlashLockoutStart:
+      log_core0.info("[IPC] Received OTA Lockout Request. Moving to SRAM...");
+      
+      // Acknowledge the lockout request to allow Core 1 to start erasing
+      board::Multicore::fifo_push_blocking(0xDEADBEEF);
+
+      // Execute exactly from SRAM to spin until told to wake up
+      ipc_ram_pause_loop();
+      
+      log_core0.info("[IPC] OTA Lockout Ended. Resuming execution from Flash.");
       break;
     default:
       break;

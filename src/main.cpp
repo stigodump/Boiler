@@ -223,16 +223,14 @@ int main() {
   TempSensor::init();
 
   // --- Initialize Display & Joystick  ---
-#include "pico/multicore.h"
-
-// ... existing code in main() ...
   LcdHat::init();
   LcdHat::Display::set_backlight(true);
 
   // --- Flash Programming Synchronization ---
   // Allow Core 1 (NetworkCore OTA) to pause Core 0 execution seamlessly 
   // during flash erase/program cycles to prevent fatal XIP bus deadlocks.
-  multicore_lockout_victim_init();
+  // We handle this natively inside ipc_handler.cpp's ipc_ram_pause_loop now.
+  // multicore_lockout_victim_init(); // REMOVED to prevent IPC message theft
 
   log_core0.info("Boiler System Starting on Core 0...");
 
@@ -262,9 +260,6 @@ int main() {
                                 board::Timer, board::Multicore,
                                 common::Logger<Console>>;
   BoilerNetworkCore::set_logger(&log_core1);
-
-  log_core0.info("Initializing Thread-Safe Intercore Queues...");
-  board::Multicore::init();
 
   log_core0.info("Launching Network Stack on Core 1...");
   board::Multicore::launch_core1(BoilerNetworkCore::core1_main);
