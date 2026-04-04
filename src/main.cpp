@@ -226,12 +226,6 @@ int main() {
   LcdHat::init();
   LcdHat::Display::set_backlight(true);
 
-  // --- Flash Programming Synchronization ---
-  // Allow Core 1 (NetworkCore OTA) to pause Core 0 execution seamlessly 
-  // during flash erase/program cycles to prevent fatal XIP bus deadlocks.
-  // We handle this natively inside ipc_handler.cpp's ipc_ram_pause_loop now.
-  // multicore_lockout_victim_init(); // REMOVED to prevent IPC message theft
-
   log_core0.info("Boiler System Starting on Core 0...");
 
   // --- Load Settings from EEPROM (must be after I2C + Console init) ---
