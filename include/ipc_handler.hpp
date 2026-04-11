@@ -1,9 +1,11 @@
 #pragma once
 
-#include "common/ring_pool.hpp"
-#include "platform/network_core/network_core.hpp"
 #include <cstddef>
 #include <cstdint>
+
+#include "common/ring_pool.hpp"
+#include "platform/network_core/network_core.hpp"
+#include "platform/network_core/network_core_ipc.hpp"
 
 namespace boiler {
 
@@ -24,7 +26,7 @@ public:
   void process_messages();
 
   /// Publish telemetry to a specific MQTT topic.
-  void publish_telemetry(const char *topic, const char *payload);
+  void publish_telemetry(const char *topic, const char *payload, bool retain = false);
 
   /// Subscribe to an MQTT topic.
   void subscribe_topic(const char *topic);

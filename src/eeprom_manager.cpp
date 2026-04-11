@@ -8,7 +8,7 @@ extern common::Logger<boiler_board::Console> log_core0;
 namespace boiler {
 namespace eeprom_manager {
 
-static constexpr uint32_t kAppSettingsMagic = 0xDEADBEE2;
+static constexpr uint32_t kAppSettingsMagic = 0xDEADBEE4;
 static constexpr uint32_t kAlarmSettingsMagic = 0xA1A8A001;
 
 bool load_app_settings(AppSettingsData& out_data) {

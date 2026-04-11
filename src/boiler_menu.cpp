@@ -14,6 +14,7 @@ static MenuSystem* g_menu_system = nullptr;
 
 // Adjustable values buffer for menu interaction
 static int menu_boiler_temp = 21;
+static int menu_pump_delay_sec = 180;
 
 // --- Callbacks ---
 
@@ -201,11 +202,55 @@ const MenuNode set_temp_menu = {
     &root_menu
 };
 
+// --- Set Pump Delay Submenu ---
+
+static MenuItem set_pump_delay_items[] = {
+    {"Cancel", MenuItemType::Back, {}},
+    {"Delay", MenuItemType::ValueInt, {}}, // Pointers initialized in setup_menu
+    {"< Save", MenuItemType::Action, { .action = [](){
+        app_settings.set_pump_run_time_sec(menu_pump_delay_sec);
+        log_core0.printf("[MENU] Pump Delay changed and saved: %d\r\n", app_settings.get_pump_run_time_sec());
+        if (g_menu_system) g_menu_system->on_left(); // Go back
+    }}}
+};
+
+const MenuNode set_pump_delay_menu = {
+    "Pump Delay",
+    sizeof(set_pump_delay_items) / sizeof(set_pump_delay_items[0]),
+    set_pump_delay_items,
+    &root_menu
+};
+
+// --- Run Time Submenu ---
+
+static MenuItem run_time_items[2];
+static char run_time_str[32];
+static MenuNode run_time_menu = {
+    "Run Time",
+    2,
+    run_time_items,
+    &root_menu
+};
+
+static void prepare_run_time_menu() {
+    run_time_items[0] = {"Back", MenuItemType::Back, {}};
+    
+    uint32_t total_sec = app_settings.get_burner_runtime();
+    uint32_t hours = total_sec / 3600;
+    uint32_t mins = (total_sec % 3600) / 60;
+    uint32_t secs = total_sec % 60;
+    
+    snprintf(run_time_str, sizeof(run_time_str), "%lu HRS %02lu MIN", hours, mins);
+    run_time_items[1] = {run_time_str, MenuItemType::Action, { .action = [](){} }};
+}
+
 // --- Main Menu Structure ---
 
 static const MenuItem root_items[] = {
     {"Timers", MenuItemType::SubMenu, { .submenu = &timers_menu }},
     {"Temperature", MenuItemType::DynamicSubMenu, { .dynamic_submenu = { &set_temp_menu, [](){ menu_boiler_temp = app_settings.get_boiler_temp(); } } }},
+    {"Pump Delay", MenuItemType::DynamicSubMenu, { .dynamic_submenu = { &set_pump_delay_menu, [](){ menu_pump_delay_sec = app_settings.get_pump_run_time_sec(); } } }},
+    {"Burner Runtime", MenuItemType::DynamicSubMenu, { .dynamic_submenu = { &run_time_menu, prepare_run_time_menu } }},
     {"Exit", MenuItemType::Action, { .action = on_save_settings }}
 };
 
@@ -229,6 +274,14 @@ void setup_menu(MenuSystem& menu_system) {
     set_temp_items[1].data.int_val.step = 1;
     set_temp_items[1].data.int_val.on_change = nullptr; // Confirmed on Save action instead
     set_temp_items[1].data.int_val.format_suffix = "\x7F" "C";
+
+    // Setup the ValueInt handler for "Delay" in set_pump_delay_items
+    set_pump_delay_items[1].data.int_val.value = &menu_pump_delay_sec;
+    set_pump_delay_items[1].data.int_val.min_val = 0;
+    set_pump_delay_items[1].data.int_val.max_val = AppSettings::kMaxPumpRunTime;
+    set_pump_delay_items[1].data.int_val.step = 30; // 30 sec increments
+    set_pump_delay_items[1].data.int_val.on_change = nullptr;
+    set_pump_delay_items[1].data.int_val.format_suffix = " Sec";
 
     menu_system.set_root_menu(&root_menu);
 }

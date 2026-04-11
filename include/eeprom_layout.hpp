@@ -9,6 +9,8 @@ namespace boiler {
 struct AppSettingsData {
   uint32_t magic;
   int boiler_temp;
+  uint32_t burner_runtime_sec;
+  uint32_t pump_run_time_sec;
 };
 
 struct AlarmSettingsData {

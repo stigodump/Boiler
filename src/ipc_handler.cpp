@@ -109,7 +109,7 @@ void IpcHandler::process_messages() {
   }
 }
 
-void IpcHandler::publish_telemetry(const char *topic, const char *payload) {
+void IpcHandler::publish_telemetry(const char *topic, const char *payload, bool retain) {
   using namespace boiler_board;
   using namespace network_core::ipc;
 
@@ -118,6 +118,7 @@ void IpcHandler::publish_telemetry(const char *topic, const char *payload) {
 
   Message *tx_msg = tx_pool_.alloc();
   tx_msg->type = MsgType::MqttPublish;
+  tx_msg->mqtt_msg.retain = retain;
 
   strncpy(tx_msg->mqtt_msg.topic, topic, sizeof(tx_msg->mqtt_msg.topic) - 1);
 

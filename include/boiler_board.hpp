@@ -2,6 +2,7 @@
 // Boiler Project Board Components
 
 #include "board.hpp"
+#include "clock_manager.hpp"
 #include "drivers/at24c32/at24c32.hpp"
 #include "drivers/ds1307/ds1307.hpp"
 #include "drivers/ds18b20/ds18b20.hpp"
@@ -36,8 +37,8 @@ using LcdBl = board::Gpio13;
 
 // Round LCD 1.28 Hat (GC9A01 LCD + 5-way Joystick)
 using LcdHat = drivers::round_lcd_128_hat::RoundLcd128Hat<
-    LcdSpi, LcdCs, LcdDc, LcdRst, LcdBl, board::Timer, board::Gpio6, board::Gpio14,
-    board::Gpio7, board::Gpio15,
+    LcdSpi, LcdCs, LcdDc, LcdRst, LcdBl, board::Timer, board::Gpio6,
+    board::Gpio14, board::Gpio7, board::Gpio15,
     board::Gpio22>; // Up, Down, Left, Right, Select
 
 // --- I2C Bus & RTC / EEPROM ---
@@ -46,5 +47,7 @@ using RtcI2c = board::I2c<1, 26, 27, 100000>; // I2C1, 100kHz standard mode
 
 using DS1307Rtc = drivers::DS1307<RtcI2c>;
 using Eeprom = drivers::AT24C32<RtcI2c, board::Timer>;
+
+using SysClock = ClockManager<DS1307Rtc, board::PicoRtc>;
 
 } // namespace boiler_board

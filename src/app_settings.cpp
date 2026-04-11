@@ -10,7 +10,7 @@ namespace boiler {
 
 static constexpr uint32_t kSettingsMagic = 0xDEADBEEF;
 
-AppSettings::AppSettings() : boiler_temp_(40) { // Default reasonable temp
+AppSettings::AppSettings() : boiler_temp_(40), burner_runtime_sec_(0), pump_run_time_sec_(180) { // Default reasonable temp and 3min pump overrun
 }
 
 void AppSettings::load() {
@@ -20,8 +20,14 @@ void AppSettings::load() {
     if (data.boiler_temp >= kMinBoilerTemp &&
         data.boiler_temp <= kMaxBoilerTemp) {
       boiler_temp_ = data.boiler_temp;
+      burner_runtime_sec_ = data.burner_runtime_sec;
+      pump_run_time_sec_ = data.pump_run_time_sec;
       log_core0.printf("Loaded boiler temp from EEPROM: %d C\r\n",
                        boiler_temp_);
+      log_core0.printf("Loaded burner runtime: %lu s\r\n",
+                       burner_runtime_sec_);
+      log_core0.printf("Loaded pump run time: %lu s\r\n",
+                       pump_run_time_sec_);
     } else {
       log_core0.warn("EEPROM target temp out of bounds, using default.");
     }
@@ -33,6 +39,8 @@ void AppSettings::load() {
 void AppSettings::save() {
   AppSettingsData data;
   data.boiler_temp = boiler_temp_;
+  data.burner_runtime_sec = burner_runtime_sec_;
+  data.pump_run_time_sec = pump_run_time_sec_;
 
   eeprom_manager::save_app_settings(data);
 }
@@ -44,6 +52,24 @@ bool AppSettings::set_boiler_temp(int temp) {
       save();
     }
     return true; // We could later notify observers or save to flash here
+  }
+  return false;
+}
+
+void AppSettings::add_burner_runtime(uint32_t seconds) {
+  if (seconds > 0) {
+    burner_runtime_sec_ += seconds;
+    save();
+  }
+}
+
+bool AppSettings::set_pump_run_time_sec(uint32_t sec) {
+  if (sec <= kMaxPumpRunTime) {
+    if (pump_run_time_sec_ != sec) {
+      pump_run_time_sec_ = sec;
+      save();
+    }
+    return true;
   }
   return false;
 }
