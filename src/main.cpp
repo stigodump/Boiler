@@ -9,7 +9,7 @@
 #include "clock_manager.hpp"
 #include "eeprom_manager.hpp"
 #include "homeassistant_mqtt.hpp"
-#include "ipc_handler.hpp"
+#include "platform/network_core/ipc_handler.hpp"
 #include "menu_system.hpp"
 #include "mqtt_handler.hpp"
 #include "sensor_config.hpp"
@@ -22,7 +22,7 @@ common::Logger<Console> log_core0;
 common::Logger<Console> log_core1;
 
 // IPC Handler
-boiler::IpcHandler ipc;
+network_core::ipc::IpcHandler ipc;
 
 // Temperature Manager
 static boiler::TempManager temp_manager;
@@ -81,25 +81,16 @@ void display_home_screen(bool clear_screen = false) {
            current_time.month, current_time.year);
   draw_centered_string(temp_str, 40);
 
-  // Find the primary boiler temperature sensor by name
-  float boiler_temp = -100.0f;
-  bool boiler_found = false;
-
-  const boiler::TemperatureSensor *boiler_sensor =
-      temp_manager.get_sensor_by_name("boiler_core");
-  if (boiler_sensor && boiler_sensor->is_valid) {
-    boiler_temp = boiler_sensor->temp_c;
-    boiler_found = true;
-  }
-
   // Display Boiler Temp
-  if (boiler_found) {
-    snprintf(temp_str, sizeof(temp_str),
-             "Boiler: %04.1f\x7F"
-             "C",
-             boiler_temp);
-    draw_centered_string(temp_str, 80);
+  float calc_temp = burner_control.get_calculated_temp();
+  bool degraded = burner_control.is_degraded();
 
+  if (calc_temp > -99.0f) {
+    snprintf(temp_str, sizeof(temp_str),
+             "Boiler%s: %04.1f\x7F"
+             "C", degraded ? "!" : "",
+             calc_temp);
+    draw_centered_string(temp_str, 80, degraded ? 0xF800 : 0xFFFF);
   } else {
     snprintf(temp_str, sizeof(temp_str), "Boiler: Wait/Err");
     draw_centered_string(temp_str, 80, 0xF800);
@@ -137,6 +128,20 @@ void on_burner_state_change(boiler::BurnerControl::State new_state,
     app_settings.add_burner_runtime(on_time_sec);
   }
   display_home_screen(false);
+}
+
+void on_calculated_temp_change(float temp) {
+  // Update Home screen
+  display_home_screen(false);
+
+  // Publish calculated telemetry
+  if (ipc.get_status().is_mqtt_connected) {
+    char payload[sizeof(network_core::ipc::MqttMessage::payload)];
+    char topic[sizeof(network_core::ipc::MqttMessage::topic)];
+    snprintf(topic, sizeof(topic), "temperature/boiler_core_calc");
+    snprintf(payload, sizeof(payload), "%.2f", temp);
+    ipc.publish_telemetry(topic, payload);
+  }
 }
 
 // Control timer callbacks
@@ -264,6 +269,7 @@ int main() {
 
   // Set callback for burner state changes
   burner_control.set_state_change_callback(on_burner_state_change);
+  burner_control.set_temp_change_callback(on_calculated_temp_change);
 
   // --- Launch Network Stack on Core 1 ---
   using BoilerNetworkCore =
@@ -276,7 +282,7 @@ int main() {
   log_core0.info("Launching Network Stack on Core 1...");
   board::Multicore::launch_core1(BoilerNetworkCore::core1_main);
 
-  // --- Set up IPC and Network ---
+  ipc.set_logger_cb([](const char* msg) { log_core0.info(msg); });
   ipc.set_mqtt_root_name("boiler");
   ipc.set_mqtt_msg_cb(on_mqtt_message);
   ipc.set_link_up_cb(on_link_up);
@@ -353,20 +359,29 @@ int main() {
       last_second = SysClock::get_current_time().sec;
 
       // Update Burner Control
-      const boiler::TemperatureSensor *boiler_sensor =
-          temp_manager.get_sensor_by_name("boiler_core");
-      float current_boiler_temp =
-          boiler_sensor ? boiler_sensor->temp_c : 100.0f;
-      bool is_valid = boiler_sensor ? boiler_sensor->is_valid : false;
+      const boiler::TemperatureSensor *boiler_sensor_0 =
+          temp_manager.get_sensor_by_name("boiler_core_0");
+      const boiler::TemperatureSensor *boiler_sensor_1 =
+          temp_manager.get_sensor_by_name("boiler_core_1");
+          
+      float current_boiler_temp_0 =
+          boiler_sensor_0 ? boiler_sensor_0->temp_c : -100.0f;
+      bool is_valid_0 = boiler_sensor_0 ? boiler_sensor_0->is_valid : false;
+      
+      float current_boiler_temp_1 =
+          boiler_sensor_1 ? boiler_sensor_1->temp_c : -100.0f;
+      bool is_valid_1 = boiler_sensor_1 ? boiler_sensor_1->is_valid : false;
+
       int target_temp = app_settings.get_boiler_temp();
       uint32_t overrun_sec = app_settings.get_pump_run_time_sec();
-      burner_control.update(current_boiler_temp, target_temp, is_valid, now, overrun_sec);
+      burner_control.update(current_boiler_temp_0, is_valid_0, current_boiler_temp_1, is_valid_1, target_temp, now, overrun_sec);
 
-      // Publish HA state
+      // Publish HA state using calculated temperature
       if (ipc.get_status().is_mqtt_connected) {
+        float calc_temp = burner_control.get_calculated_temp();
         const char *mode = burner_control.get_auto_mode() ? "auto" : "off";
         const char *action = burner_control.is_burner_on() ? "heating" : "idle";
-        boiler::ha_mqtt.publish_state(current_boiler_temp, (float)target_temp,
+        boiler::ha_mqtt.publish_state(calc_temp > -99.0f ? calc_temp : 0.0f, (float)target_temp,
                                       mode, action);
       }
 

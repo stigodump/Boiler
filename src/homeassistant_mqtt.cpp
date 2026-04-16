@@ -4,7 +4,7 @@
 #include "burner_control.hpp"
 #include "common/alarm_timer.hpp"
 #include "common/logger.hpp"
-#include "ipc_handler.hpp"
+#include "platform/network_core/ipc_handler.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -12,7 +12,7 @@
 
 extern boiler::AppSettings app_settings;
 extern boiler::BurnerControl burner_control;
-extern boiler::IpcHandler ipc;
+extern network_core::ipc::IpcHandler ipc;
 extern common::Logger<boiler_board::Console> log_core0;
 extern common::AlarmTimer alarm_timer;
 
