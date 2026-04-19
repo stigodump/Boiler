@@ -4,7 +4,7 @@
 #include "burner_control.hpp"
 #include "common/alarm_timer.hpp"
 #include "common/logger.hpp"
-#include "platform/network_core/ipc_handler.hpp"
+#include "platform/ipc_handler.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -12,7 +12,7 @@
 
 extern boiler::AppSettings app_settings;
 extern boiler::BurnerControl burner_control;
-extern network_core::ipc::IpcHandler ipc;
+extern ipc::IpcHandler<common::Logger<boiler_board::Console>> ipc_ctrl;
 extern common::Logger<boiler_board::Console> log_core0;
 extern common::AlarmTimer alarm_timer;
 
@@ -21,9 +21,9 @@ namespace boiler {
 HomeAssistantMqtt ha_mqtt;
 
 void HomeAssistantMqtt::subscribe_topics() {
-  ipc.subscribe_topic("/homeassistant/climate/boiler/mode/set");
-  ipc.subscribe_topic("/homeassistant/climate/boiler/target/set");
-  ipc.subscribe_topic("/homeassistant/climate/boiler/schedule/set");
+  ipc_ctrl.subscribe_topic("/homeassistant/climate/boiler/mode/set");
+  ipc_ctrl.subscribe_topic("/homeassistant/climate/boiler/target/set");
+  ipc_ctrl.subscribe_topic("/homeassistant/climate/boiler/schedule/set");
 }
 
 void HomeAssistantMqtt::publish_discovery() {
@@ -51,7 +51,7 @@ void HomeAssistantMqtt::publish_discovery() {
            "\"act_tpl\":\"{{value_json.action}}\""
            "}");
 
-  ipc.publish_telemetry(topic, payload, true);
+  ipc_ctrl.publish_telemetry(topic, payload, true);
   log_core0.info("[HA] Published MQTT Discovery config");
 }
 
@@ -65,7 +65,7 @@ void HomeAssistantMqtt::publish_state(float current_temp, float target_temp,
            "temperature\":%.1f,\"action\":\"%s\"}",
            mode, current_temp, target_temp, action);
 
-  ipc.publish_telemetry(topic, payload, true);
+  ipc_ctrl.publish_telemetry(topic, payload, true);
 }
 
 bool HomeAssistantMqtt::handle_message(const char *topic,
@@ -81,7 +81,7 @@ bool HomeAssistantMqtt::handle_message(const char *topic,
     if (target > 0 && target <= 100) {
       app_settings.set_boiler_temp(target);
       // Wait to publish state in the main loop or here.
-      log_core0.printf("[HA] Set target temperature to %d\r\n", target);
+      log_core0.info("[HA] Set target temperature to %d", target);
     }
     return true;
   }

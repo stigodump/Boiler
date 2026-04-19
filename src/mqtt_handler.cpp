@@ -29,7 +29,7 @@ void on_mqtt_message(const char *topic, const uint8_t *payload, size_t len) {
       boiler_board::SysClock::set_time(dt);
 
     } else {
-      log_core0.warn("[TIME] Failed to parse ZDA string");
+      log_core0.warn("[MQTT] Failed to parse ZDA string");
     }
   } else if (strncmp(topic, "home/boiler/set", 15) == 0) {
     // Process boiler set commands (e.g., target temp, manual override)

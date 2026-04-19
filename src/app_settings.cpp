@@ -10,7 +10,9 @@ namespace boiler {
 
 static constexpr uint32_t kSettingsMagic = 0xDEADBEEF;
 
-AppSettings::AppSettings() : boiler_temp_(40), burner_runtime_sec_(0), pump_run_time_sec_(180) { // Default reasonable temp and 3min pump overrun
+AppSettings::AppSettings()
+    : boiler_temp_(40), burner_runtime_sec_(0),
+      pump_run_time_sec_(180) { // Default reasonable temp and 3min pump overrun
 }
 
 void AppSettings::load() {
@@ -22,17 +24,18 @@ void AppSettings::load() {
       boiler_temp_ = data.boiler_temp;
       burner_runtime_sec_ = data.burner_runtime_sec;
       pump_run_time_sec_ = data.pump_run_time_sec;
-      log_core0.printf("Loaded boiler temp from EEPROM: %d C\r\n",
-                       boiler_temp_);
-      log_core0.printf("Loaded burner runtime: %lu s\r\n",
-                       burner_runtime_sec_);
-      log_core0.printf("Loaded pump run time: %lu s\r\n",
-                       pump_run_time_sec_);
+      log_core0.info("[SETTING] Loaded boiler temp from EEPROM: %d C",
+                     boiler_temp_);
+      log_core0.info("[SETTING] Loaded burner runtime: %lu s",
+                     burner_runtime_sec_);
+      log_core0.info("[SETTING] Loaded pump run time: %lu s",
+                     pump_run_time_sec_);
     } else {
-      log_core0.warn("EEPROM target temp out of bounds, using default.");
+      log_core0.warn(
+          "[SETTING] EEPROM target temp out of bounds, using default.");
     }
   } else {
-    log_core0.info("Using default AppSettings.");
+    log_core0.info("[SETTING] Using default AppSettings.");
   }
 }
 

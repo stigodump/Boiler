@@ -13,7 +13,7 @@
 namespace boiler_board {
 
 // App configures which UART to use
-using Console = board::Uart<0, 115200>;
+using Console = board::Uart0<115200>;
 
 using Relay1 = board::Gpio2;
 using Relay2 = board::Gpio3;

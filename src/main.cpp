@@ -9,9 +9,9 @@
 #include "clock_manager.hpp"
 #include "eeprom_manager.hpp"
 #include "homeassistant_mqtt.hpp"
-#include "platform/network_core/ipc_handler.hpp"
 #include "menu_system.hpp"
 #include "mqtt_handler.hpp"
+#include "platform/ipc_handler.hpp"
 #include "sensor_config.hpp"
 #include "temp_manager.hpp"
 
@@ -19,10 +19,9 @@ using namespace boiler_board;
 
 // Global loggers
 common::Logger<Console> log_core0;
-common::Logger<Console> log_core1;
 
 // IPC Handler
-network_core::ipc::IpcHandler ipc;
+ipc::IpcHandler<common::Logger<Console>> ipc_ctrl;
 
 // Temperature Manager
 static boiler::TempManager temp_manager;
@@ -43,8 +42,7 @@ boiler::BurnerControl burner_control(boiler_board::BurnerRelay::set,
 // Alarm Timer (Global for menu access)
 common::AlarmTimer alarm_timer;
 
-static uint32_t last_burner_duration = 0;
-
+// Display Home Screen
 void display_home_screen(bool clear_screen = false) {
   if (menu_system.is_active()) {
     return;
@@ -88,8 +86,8 @@ void display_home_screen(bool clear_screen = false) {
   if (calc_temp > -99.0f) {
     snprintf(temp_str, sizeof(temp_str),
              "Boiler%s: %04.1f\x7F"
-             "C", degraded ? "!" : "",
-             calc_temp);
+             "C",
+             degraded ? "!" : "", calc_temp);
     draw_centered_string(temp_str, 80, degraded ? 0xF800 : 0xFFFF);
   } else {
     snprintf(temp_str, sizeof(temp_str), "Boiler: Wait/Err");
@@ -124,35 +122,20 @@ void display_home_screen(bool clear_screen = false) {
 void on_burner_state_change(boiler::BurnerControl::State new_state,
                             uint32_t on_time_sec) {
   if (new_state == boiler::BurnerControl::State::Off) {
-    last_burner_duration = on_time_sec;
     app_settings.add_burner_runtime(on_time_sec);
   }
   display_home_screen(false);
 }
 
-void on_calculated_temp_change(float temp) {
-  // Update Home screen
-  display_home_screen(false);
-
-  // Publish calculated telemetry
-  if (ipc.get_status().is_mqtt_connected) {
-    char payload[sizeof(network_core::ipc::MqttMessage::payload)];
-    char topic[sizeof(network_core::ipc::MqttMessage::topic)];
-    snprintf(topic, sizeof(topic), "temperature/boiler_core_calc");
-    snprintf(payload, sizeof(payload), "%.2f", temp);
-    ipc.publish_telemetry(topic, payload);
-  }
-}
-
 // Control timer callbacks
 void on_timer_on() {
-  log_core0.info("[TIMER] Alarm Timer triggered ON event!");
+  log_core0.info("[APP] Alarm Timer triggered ON event!");
   burner_control.set_auto_mode(true);
   display_home_screen(false);
 }
 
 void on_timer_off() {
-  log_core0.info("[TIMER] Alarm Timer triggered OFF event!");
+  log_core0.info("[APP] Alarm Timer triggered OFF event!");
   burner_control.set_auto_mode(false);
   display_home_screen(false);
 }
@@ -161,13 +144,15 @@ void on_timer_mode_change(common::TimerMode mode) {
   display_home_screen(false);
 }
 
-// Status callbacks
+// Network Status callbacks
 void on_link_up() { board::Led::set(true); }
 void on_link_down() { board::Led::set(false); }
 void on_network_up() {}
 void on_network_down() {}
+
+// MQTT callbacks
 void on_mqtt_connected() {
-  ipc.subscribe_topic("/weather_station/gnss/telegram/ZDA");
+  ipc_ctrl.subscribe_topic("/weather_station/gnss/telegram/ZDA");
   board::Timer::sleep_ms(
       200); // Required purely pacing for W5100s buffer flush (QoS 0 drops)
   boiler::ha_mqtt.publish_discovery();
@@ -176,38 +161,49 @@ void on_mqtt_connected() {
 }
 void on_mqtt_disconnected() {}
 
-// Temp Manager callbacks
+// Temperature Manager callbacks
 void on_temp_change(const boiler::TemperatureSensor *sensor) {
   if (!sensor || !sensor->sensor_id) {
-    log_core0.warn("[TEMP] Received change callback for invalid sensor.");
+    log_core0.warn("[APP] Received change callback for invalid sensor.");
     return;
   }
 
-  // Update Home screen
-  display_home_screen(false);
-
   // Publish telemetry
-  if (ipc.get_status().is_mqtt_connected) {
-    char payload[sizeof(network_core::ipc::MqttMessage::payload)];
-    char topic[sizeof(network_core::ipc::MqttMessage::topic)];
+  if (ipc_ctrl.get_status().is_mqtt_connected) {
+    char payload[sizeof(ipc::MqttMessage::payload)];
+    char topic[sizeof(ipc::MqttMessage::topic)];
     snprintf(topic, sizeof(topic), "temperature/%s", sensor->sensor_id->name);
     snprintf(payload, sizeof(payload), "%.2f", sensor->temp_c);
-    ipc.publish_telemetry(topic, payload);
+    ipc_ctrl.publish_telemetry(topic, payload);
+  }
+}
+
+// Calculated temperature change callback
+void on_calculated_temp_change(float temp) {
+  display_home_screen(false);
+
+  // Publish calculated telemetry
+  if (ipc_ctrl.get_status().is_mqtt_connected) {
+    char payload[sizeof(ipc::MqttMessage::payload)];
+    char topic[sizeof(ipc::MqttMessage::topic)];
+    snprintf(topic, sizeof(topic), "temperature/boiler_core_calc");
+    snprintf(payload, sizeof(payload), "%.2f", temp);
+    ipc_ctrl.publish_telemetry(topic, payload);
   }
 }
 
 void on_temp_failure(const boiler::TemperatureSensor *sensor) {
   if (!sensor || !sensor->sensor_id) {
-    log_core0.warn("[TEMP] Received failure callback for invalid sensor.");
+    log_core0.warn("[APP] Received failure callback for invalid sensor.");
     return;
   }
 
-  log_core0.printf("[ERR] [TEMP] %s FAIL (count: %d)\r\n",
-                   sensor->sensor_id->name, sensor->fail_count);
+  log_core0.error("[APP] %s FAIL (count: %d)", sensor->sensor_id->name,
+                  sensor->fail_count);
 }
 
 void on_schedule_change(const common::AlarmTimer::Schedule &slots) {
-  log_core0.info("[ALARM] Schedule changed");
+  log_core0.info("[APP] Schedule changed");
   boiler::AlarmSettingsData data;
   for (int d = 0; d < 7; ++d) {
     for (int i = 0; i < common::AlarmTimer::kMaxSlotsPerDay; ++i) {
@@ -219,6 +215,12 @@ void on_schedule_change(const common::AlarmTimer::Schedule &slots) {
 }
 
 int main() {
+  // Start the watchdog immediately — the first thing the app does.
+  // Core 1's main loop kicks it every 10 ms once running, so the 8-second
+  // window covers all legitimate startup paths. Any crash before Core 1
+  // reaches its kick loop causes a reboot and bootloader rollback.
+  board::Watchdog::enable(8000);
+
   // --- Init board peripherals ---
   board::Led::init();
 
@@ -236,7 +238,7 @@ int main() {
 
   // --- Console UART ---
   Console::set_pins(/*tx*/ 0, /*rx*/ 1);
-  Console::open();
+  Console::init();
 
   // --- Initialize Temperature Sensor ---
   TempSensor::init();
@@ -245,7 +247,7 @@ int main() {
   LcdHat::init();
   LcdHat::Display::set_backlight(true);
 
-  log_core0.info("Boiler System Starting on Core 0...");
+  log_core0.info("[APP] Boiler System Starting on Core 0...");
 
   // --- Load Settings from EEPROM (must be after I2C + Console init) ---
   app_settings.load();
@@ -256,10 +258,10 @@ int main() {
   // --- Load Alarm Schedule from EEPROM ---
   boiler::AlarmSettingsData alarm_data;
   if (boiler::eeprom_manager::load_alarm_schedule(alarm_data)) {
-    log_core0.info("Loaded alarm schedule from EEPROM.");
+    log_core0.info("[APP] Loaded alarm schedule from EEPROM.");
     alarm_timer.load_schedule(alarm_data.schedule);
   } else {
-    log_core0.info("Using empty alarm schedule.");
+    log_core0.info("[APP] Using empty alarm schedule.");
   }
 
   // Set callback for future schedule changes to be saved to EEPROM
@@ -271,29 +273,25 @@ int main() {
   burner_control.set_state_change_callback(on_burner_state_change);
   burner_control.set_temp_change_callback(on_calculated_temp_change);
 
-  // --- Launch Network Stack on Core 1 ---
-  using BoilerNetworkCore =
-      network_core::NetworkCore<board::NetSocket1, board::NetSocket2,
-                                board::NetSocket3, board::NetSocket4,
-                                board::Timer, board::Multicore,
-                                common::Logger<Console>>;
-  BoilerNetworkCore::set_logger(&log_core1);
+  using BoilerNetworkCore = network_core::NetworkCore<
+      board::NetSocket1, board::NetSocket2, board::NetSocket3,
+      board::NetSocket4, board::Timer, board::Multicore, board::Watchdog>;
 
-  log_core0.info("Launching Network Stack on Core 1...");
+  log_core0.info("[APP] Launching Network Stack on Core 1...");
   board::Multicore::launch_core1(BoilerNetworkCore::core1_main);
 
-  ipc.set_logger_cb([](const char* msg) { log_core0.info(msg); });
-  ipc.set_mqtt_root_name("boiler");
-  ipc.set_mqtt_msg_cb(on_mqtt_message);
-  ipc.set_link_up_cb(on_link_up);
-  ipc.set_link_down_cb(on_link_down);
-  ipc.set_network_up_cb(on_network_up);
-  ipc.set_network_down_cb(on_network_down);
-  ipc.set_mqtt_connected_cb(on_mqtt_connected);
-  ipc.set_mqtt_disconnected_cb(on_mqtt_disconnected);
+  ipc_ctrl.set_logger_cb([](const char *msg) { Console::write_str(msg); });
+  ipc_ctrl.set_mqtt_root_name("boiler");
+  ipc_ctrl.set_mqtt_msg_cb(on_mqtt_message);
+  ipc_ctrl.set_link_up_cb(on_link_up);
+  ipc_ctrl.set_link_down_cb(on_link_down);
+  ipc_ctrl.set_network_up_cb(on_network_up);
+  ipc_ctrl.set_network_down_cb(on_network_down);
+  ipc_ctrl.set_mqtt_connected_cb(on_mqtt_connected);
+  ipc_ctrl.set_mqtt_disconnected_cb(on_mqtt_disconnected);
 
   // --- Discover 1-Wire Sensors ---
-  log_core0.info("Scanning for 1-Wire DS18B20 sensors...");
+  log_core0.info("[APP] Scanning for 1-Wire DS18B20 sensors...");
   TempSensorBus::SearchState search_state;
   uint8_t discovered_roms[10][8]; // Store up to 10 sensors
   int sensor_count = 0;
@@ -302,19 +300,19 @@ int main() {
     for (int i = 0; i < 8; i++) {
       discovered_roms[sensor_count][i] = search_state.rom[i];
     }
-    log_core0.printf(
-        "[INF] Found Sensor %d: %02X%02X%02X%02X%02X%02X%02X%02X\r\n",
-        sensor_count + 1, search_state.rom[7], search_state.rom[6],
-        search_state.rom[5], search_state.rom[4], search_state.rom[3],
-        search_state.rom[2], search_state.rom[1], search_state.rom[0]);
+    log_core0.info("[APP] Found Sensor %d: %02X%02X%02X%02X%02X%02X%02X%02X",
+                   sensor_count + 1, search_state.rom[7], search_state.rom[6],
+                   search_state.rom[5], search_state.rom[4],
+                   search_state.rom[3], search_state.rom[2],
+                   search_state.rom[1], search_state.rom[0]);
     sensor_count++;
   }
 
   if (sensor_count == 0) {
-    log_core0.warn("No DS18B20 sensors found on the 1-Wire bus!");
+    log_core0.warn("[APP] No DS18B20 sensors found on the 1-Wire bus!");
     // Draw empty status to display
   } else {
-    log_core0.printf("[INF] Found a total of %d sensors.\r\n", sensor_count);
+    log_core0.info("[APP] Found a total of %d sensors.", sensor_count);
   }
 
   // --- Initialize Temperature Manager ---
@@ -323,11 +321,11 @@ int main() {
         boiler::find_sensor_config(discovered_roms[i]);
     if (config) {
       temp_manager.add_sensor(discovered_roms[i]);
-      log_core0.printf("[INF] Registered Sensor %d: %s to TempManager.\r\n",
-                       i + 1, config->name);
+      log_core0.info("[APP] Registered Sensor %d: %s to TempManager.", i + 1,
+                     config->name);
     } else {
-      log_core0.printf("[WRN] Sensor %02X%02X... not in config.\r\n",
-                       discovered_roms[i][7], discovered_roms[i][6]);
+      log_core0.warn("[APP] Sensor %02X%02X... not in config.",
+                     discovered_roms[i][7], discovered_roms[i][6]);
     }
   }
   temp_manager.set_on_change(on_temp_change);
@@ -349,7 +347,7 @@ int main() {
     uint32_t now = board::Timer::ticks_ms();
 
     // Process IPC Messages from Core 1
-    ipc.process_messages();
+    ipc_ctrl.process_messages();
 
     // Update Temperature Manager
     temp_manager.update();
@@ -363,26 +361,28 @@ int main() {
           temp_manager.get_sensor_by_name("boiler_core_0");
       const boiler::TemperatureSensor *boiler_sensor_1 =
           temp_manager.get_sensor_by_name("boiler_core_1");
-          
+
       float current_boiler_temp_0 =
           boiler_sensor_0 ? boiler_sensor_0->temp_c : -100.0f;
       bool is_valid_0 = boiler_sensor_0 ? boiler_sensor_0->is_valid : false;
-      
+
       float current_boiler_temp_1 =
           boiler_sensor_1 ? boiler_sensor_1->temp_c : -100.0f;
       bool is_valid_1 = boiler_sensor_1 ? boiler_sensor_1->is_valid : false;
 
       int target_temp = app_settings.get_boiler_temp();
       uint32_t overrun_sec = app_settings.get_pump_run_time_sec();
-      burner_control.update(current_boiler_temp_0, is_valid_0, current_boiler_temp_1, is_valid_1, target_temp, now, overrun_sec);
+      burner_control.update(current_boiler_temp_0, is_valid_0,
+                            current_boiler_temp_1, is_valid_1, target_temp, now,
+                            overrun_sec);
 
       // Publish HA state using calculated temperature
-      if (ipc.get_status().is_mqtt_connected) {
+      if (ipc_ctrl.get_status().is_mqtt_connected) {
         float calc_temp = burner_control.get_calculated_temp();
         const char *mode = burner_control.get_auto_mode() ? "auto" : "off";
         const char *action = burner_control.is_burner_on() ? "heating" : "idle";
-        boiler::ha_mqtt.publish_state(calc_temp > -99.0f ? calc_temp : 0.0f, (float)target_temp,
-                                      mode, action);
+        boiler::ha_mqtt.publish_state(calc_temp > -99.0f ? calc_temp : 0.0f,
+                                      (float)target_temp, mode, action);
       }
 
       // Alarm update time update
