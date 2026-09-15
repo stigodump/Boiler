@@ -1,0 +1,3 @@
+[submodule "BaseApp"]
+	path = BaseApp
+	url = git@github.com:stigodump/BaseApp.git

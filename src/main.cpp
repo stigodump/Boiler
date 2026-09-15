@@ -455,7 +455,7 @@ int main() {
       if ((now - last_joystick_activity_ms) > 60000) {
         menu_system.close();
       } else {
-        menu_system.draw<LcdHat::Display>();
+        menu_system.template draw<LcdHat::Display>();
       }
     }
 
