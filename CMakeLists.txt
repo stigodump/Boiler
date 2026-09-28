@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.13)
 
-set(BOARD "w5100s_evb_pico" CACHE STRING "Target board")
+set(BOARD "w5500_evb_pico" CACHE STRING "Target board")
 
 set(BASEAPP_PATH "${CMAKE_CURRENT_SOURCE_DIR}/BaseApp")
 if(NOT EXISTS "${BASEAPP_PATH}/baseapp.cmake")

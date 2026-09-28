@@ -274,8 +274,8 @@ int main() {
   burner_control.set_temp_change_callback(on_calculated_temp_change);
 
   using BoilerNetworkCore = network_core::NetworkCore<
-      board::NetSocket1, board::NetSocket2, board::NetSocket3,
-      board::NetSocket4, board::Timer, board::Multicore, board::Watchdog>;
+      board::NetSocket0, board::NetSocket1, board::NetSocket2,
+      board::NetSocket3, board::Timer, board::Multicore, board::Watchdog>;
 
   log_core0.info("[APP] Launching Network Stack on Core 1...");
   board::Multicore::launch_core1(BoilerNetworkCore::core1_main);
