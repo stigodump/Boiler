@@ -10,7 +10,7 @@ include(${BASEAPP_PATH}/baseapp.cmake)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL "Export compile commands" FORCE)
 
-project(boiler C CXX ASM)
+project(boiler VERSION 1.0.2 LANGUAGES C CXX ASM)
 pico_sdk_init()
 baseapp_init()
 
@@ -42,8 +42,9 @@ pico_enable_stdio_uart(boiler_standalone 0)
 add_executable(boiler_slot_a ${BOILER_SOURCES})
 target_include_directories(boiler_slot_a PRIVATE include)
 target_link_libraries(boiler_slot_a baseapp)
-pico_set_linker_script(boiler_slot_a ${CMAKE_CURRENT_SOURCE_DIR}/memmap_slot_a.ld)
-pico_add_extra_outputs(boiler_slot_a)
+# Linker script, image header and outputs (.bin/.uf2) for the bootloader.
+# Bump the project VERSION to change the version reported over OTA.
+baseapp_add_slot_image(boiler_slot_a SLOT A APP_NAME Boiler)
 pico_enable_stdio_usb(boiler_slot_a 0)
 pico_enable_stdio_uart(boiler_slot_a 0)
 
@@ -51,7 +52,8 @@ pico_enable_stdio_uart(boiler_slot_a 0)
 add_executable(boiler_slot_b ${BOILER_SOURCES})
 target_include_directories(boiler_slot_b PRIVATE include)
 target_link_libraries(boiler_slot_b baseapp)
-pico_set_linker_script(boiler_slot_b ${CMAKE_CURRENT_SOURCE_DIR}/memmap_slot_b.ld)
-pico_add_extra_outputs(boiler_slot_b)
+# Linker script, image header and outputs (.bin/.uf2) for the bootloader.
+# Bump the project VERSION to change the version reported over OTA.
+baseapp_add_slot_image(boiler_slot_b SLOT B APP_NAME Boiler)
 pico_enable_stdio_usb(boiler_slot_b 0)
 pico_enable_stdio_uart(boiler_slot_b 0)
